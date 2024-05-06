@@ -1,34 +1,54 @@
 module Gattino3D
 using Gattino
 using Gattino.ToolipsSVG
-using Gattino.Toolips
 using Gattino: AbstractContext, axes!, Servable, draw!, randstring
-import Gattino: axes!, points!, gridlabels!, grid!, AbstractContext, context, line!
+import Gattino: axes!, points!, gridlabels!, grid!, AbstractContext, context, line!, group!
 
-mutable struct Context3D <: AbstractContext
+abstract type Abstract3DContext <: AbstractContext end
+
+mutable struct Context3D <: Abstract3DContext
     window::Component{:svg}
     uuid::String
     dim::Tuple{Int64, Int64, Int64}
     margin::Tuple{Int64, Int64, Int64}
     Context3D(wind::Component{:svg}, depth::Int64, margin::Tuple{Int64, Int64, Int64}) = begin
         new(wind, randstring(), (wind[:width], wind[:height], depth),
-            margin)::Context3D
+            margin)::Abstract3DContext
     end
     Context3D(width::Int64 = 1280, height::Int64 = 720, depth::Int64 = 100,
         margin::Tuple{Int64, Int64, Int64} = (0, 0, 0)) = begin
         window::Component{:svg} = svg("window", width = width,
         height = height)
-        Context3D(window, depth, margin)::Context3D
+        Context3D(window, depth, margin)::Abstract3DContext
     end
 end
 
-function context(f::Function, width::Int64, height::Int64, depth::Int64; margin::Tuple{Int64, Int64, Int64} = (0, 0, 0))
-    con = Context3D(width, height, depth, margin)
-    f(con)
-    con::Context3D
+mutable struct Group3D <: Abstract3DContext
+    window::Component{:g}
+    uuid::String
+    dim::Tuple{Int64, Int64, Int64}
+    margin::Tuple{Int64, Int64, Int64}
+    Group3D(name::String = randstring(), width::Int64 = 1280, height::Int64 = 720, depth::Int64 = 100,
+    margin::Tuple{Int64, Int64, Int64} = (0, 0, 0)) = begin
+        window::Component{:g} = ToolipsSVG.g("$name", width = width, height = height)
+        new(window, name, (width, height, depth), margin)
+    end
 end
 
-function axes!(con::Context3D, styles::Pair{String, <:Any} ...)
+function context(f::Function, width::Int64, height::Int64, depth::Int64, margin::Tuple{Int64, Int64, Int64} = (0, 0, 0))
+    con = Context3D(width, height, depth, margin)
+    f(con)
+    con::Abstract3DContext
+end
+
+function group!(f::Function, c::Abstract3DContext, name::String, w::Int64 = c.dim[1],
+    h::Int64 = c.dim[2], d::Int64 = c.dim[3], margin::Tuple{Int64, Int64, Int64} = c.margin)
+    gr = Group3D(name, w, h, d, margin)
+    f(gr)
+    draw!(c, Vector{Servable}([gr.window]))
+end
+
+function axes!(con::Abstract3DContext, styles::Pair{String, <:Any} ...)
     if length(styles) == 0
         styles = ("fill" => "none", "stroke" => "black", "stroke-width" => "4")
     end
@@ -42,7 +62,7 @@ function axes!(con::Context3D, styles::Pair{String, <:Any} ...)
     Gattino.line!(con, 0 => con.dim[2], 0 + xside => con.dim[2] - xside)
 end
 
-function grid!(con::Context3D, divisions::Int64 = 4, styles::Pair{String, String} ...)
+function grid!(con::Abstract3DContext, divisions::Int64 = 4, styles::Pair{String, String} ...)
     if length(styles) == 0
         styles = ("fill" => "none", "stroke" => "lightblue", "stroke-width" => "1", "opacity" => 80percent)
     end
@@ -62,7 +82,7 @@ function grid!(con::Context3D, divisions::Int64 = 4, styles::Pair{String, String
     step = division_amountx), range(1, con.dim[2], step = division_amounty), range(1, con.dim[3], step = division_amountz))]
 end
 
-function points!(con::Context3D, x::Vector{<:Number}, y::Vector{<:Number}, z::Vector{<:Number},
+function points!(con::Abstract3DContext, x::Vector{<:Number}, y::Vector{<:Number}, z::Vector{<:Number},
     styles::Pair{String, <:Any} ...)
    if length(styles) == 0
        styles = ("fill" => "orange", "stroke" => "lightblue", "stroke-width" => "0")
@@ -75,8 +95,8 @@ function points!(con::Context3D, x::Vector{<:Number}, y::Vector{<:Number}, z::Ve
    percvec_z = map(n::Number -> n / zmax, z)
    draw!(con, Vector{Servable}([begin
        c = circle(randstring(), cx = pointx * con.dim[1] + con.margin[1],
-               cy = con.dim[2] - (con.dim[2] * pointy) + con.margin[2], r = 20 - (20 * pointz))
-       style!(c, styles ...)
+               cy = con.dim[2] - (con.dim[2] * pointy) + con.margin[2], r = 20 - (25 * pointz))
+       style!(c, "z-index" => Int64(ceil(pointz)), styles ...)
        xside = Int64(round(sin(angle) * (depth * pointz) / sin(90)))
        c[:cy] -= xside
        c[:cx] += xside
